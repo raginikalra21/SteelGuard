@@ -7,12 +7,13 @@ BATCH_SIZE = 32
 def get_generators():
     train_datagen = ImageDataGenerator(
         rescale=1./255,
-        rotation_range=20,
-        zoom_range=0.2,
+        rotation_range=25,
+        zoom_range=0.25,
         horizontal_flip=True,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        brightness_range=[0.8, 1.2]
+        width_shift_range=0.15,
+        height_shift_range=0.15,
+        brightness_range=[0.7, 1.3],
+        shear_range=0.15
     )
 
     val_datagen = ImageDataGenerator(
@@ -20,18 +21,18 @@ def get_generators():
     )
 
     train_generator = train_datagen.flow_from_directory(
-        "data/processed/train",
+        "data/raw/dataset/train/images",
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
-        class_mode="binary",
+        class_mode="categorical",
         shuffle=True
     )
 
     val_generator = val_datagen.flow_from_directory(
-        "data/processed/validation",
+        "data/raw/dataset/validation/images",
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
-        class_mode="binary",
+        class_mode="categorical",
         shuffle=False
     )
 
