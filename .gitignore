@@ -9,13 +9,6 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# Models
-models/*.h5
-models/*.keras
-
-# Output images
-outputs/
-
 # macOS
 .DS_Store
 
