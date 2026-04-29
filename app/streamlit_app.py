@@ -80,7 +80,7 @@ if not os.path.exists(MODEL_PATH):
 
 print("After download → exists:", os.path.exists(MODEL_PATH))
 
-# 🔥 THIS LINE WAS MISSING
+# 🔥 ADD THIS LINE (MOST IMPORTANT FIX)
 MODEL_SEARCH_PATHS = [MODEL_PATH]
 
 # ══════════════════════════════════════════════
