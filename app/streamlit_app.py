@@ -323,6 +323,16 @@ def normalize_probs(raw: np.ndarray) -> np.ndarray:
 # ══════════════════════════════════════════════
 #  MODEL LOADING  — completely safe, never raises
 # ══════════════════════════════════════════════
+from tensorflow.keras.layers import Dense
+
+# 🔥 Monkey patch to ignore quantization_config
+_original_init = Dense.__init__
+
+def patched_init(self, *args, **kwargs):
+    kwargs.pop("quantization_config", None)  # remove problematic key
+    _original_init(self, *args, **kwargs)
+
+Dense.__init__ = patched_init
 @st.cache_resource(show_spinner=False)
 def load_model_safe():
     """
