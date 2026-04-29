@@ -350,7 +350,7 @@ def load_model_safe():
         if os.path.exists(p):
             print(f"[SteelGuard] Trying model at: {p}", file=sys.stderr)
             try:
-                mdl = load_fn(p)
+                mdl = load_fn(p, compile=False)
                 print(f"[SteelGuard] Model loaded successfully from: {p}", file=sys.stderr)
                 return mdl, p
             except Exception as e:
