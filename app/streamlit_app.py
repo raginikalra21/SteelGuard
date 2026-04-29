@@ -61,17 +61,24 @@ CLASS_DESC = {
 }
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
+import os
+import gdown
+
 MODEL_PATH = "models/best_resnet50_crack_detector.h5"
 
 os.makedirs("models", exist_ok=True)
 
+print("Before download → exists:", os.path.exists(MODEL_PATH))
+
 if not os.path.exists(MODEL_PATH):
-    print("Downloading model...")   # IMPORTANT: use print, not st.write
+    print("⬇ Downloading model...")
     gdown.download(
         "https://drive.google.com/uc?id=1fRMd9xz0bJM-KSc0TIbGDMr1agYSRFnR",
         MODEL_PATH,
         quiet=False
     )
+
+print("After download → exists:", os.path.exists(MODEL_PATH))
 
 # ══════════════════════════════════════════════
 #  SESSION STATE
