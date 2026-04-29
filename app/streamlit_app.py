@@ -325,20 +325,23 @@ def normalize_probs(raw: np.ndarray) -> np.ndarray:
 # ══════════════════════════════════════════════
 import tensorflow as tf
 
-# 🔥 Patch Keras deserialization to ignore unknown args
-from keras.saving import serialization_lib
+# 🔥 Patch TensorFlow deserialization (works in older TF)
+from tensorflow.python.keras.saving import saving_utils
 
-_original_deserialize = serialization_lib.deserialize_keras_object
+_original = saving_utils.model_from_config
 
-def patched_deserialize(*args, **kwargs):
-    config = kwargs.get("config", None)
+def patched_model_from_config(config, custom_objects=None):
+    try:
+        # remove problematic key globally
+        if isinstance(config, dict):
+            for layer in config.get("layers", []):
+                if "config" in layer:
+                    layer["config"].pop("quantization_config", None)
+    except:
+        pass
+    return _original(config, custom_objects=custom_objects)
 
-    if isinstance(config, dict):
-        config.pop("quantization_config", None)
-
-    return _original_deserialize(*args, **kwargs)
-
-serialization_lib.deserialize_keras_object = patched_deserialize
+saving_utils.model_from_config = patched_model_from_config
 @st.cache_resource(show_spinner=False)
 def load_model_safe():
     """
