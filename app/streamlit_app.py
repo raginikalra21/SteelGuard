@@ -61,9 +61,11 @@ CLASS_DESC = {
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_SEARCH_PATHS = [
-    os.path.join(os.path.dirname(__file__), "../models/best_resnet50_crack_detector.h5"),
-]
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+MODEL_PATH = os.path.join(ROOT_DIR, "models", "best_resnet50_crack_detector.h5")
+
+MODEL_SEARCH_PATHS = [MODEL_PATH]
 # ══════════════════════════════════════════════
 #  SESSION STATE
 # ══════════════════════════════════════════════
