@@ -323,16 +323,22 @@ def normalize_probs(raw: np.ndarray) -> np.ndarray:
 # ══════════════════════════════════════════════
 #  MODEL LOADING  — completely safe, never raises
 # ══════════════════════════════════════════════
-from tensorflow.keras.layers import Dense
+import tensorflow as tf
 
-# 🔥 Monkey patch to ignore quantization_config
-_original_init = Dense.__init__
+# 🔥 Patch Keras deserialization to ignore unknown args
+from keras.saving import serialization_lib
 
-def patched_init(self, *args, **kwargs):
-    kwargs.pop("quantization_config", None)  # remove problematic key
-    _original_init(self, *args, **kwargs)
+_original_deserialize = serialization_lib.deserialize_keras_object
 
-Dense.__init__ = patched_init
+def patched_deserialize(*args, **kwargs):
+    config = kwargs.get("config", None)
+
+    if isinstance(config, dict):
+        config.pop("quantization_config", None)
+
+    return _original_deserialize(*args, **kwargs)
+
+serialization_lib.deserialize_keras_object = patched_deserialize
 @st.cache_resource(show_spinner=False)
 def load_model_safe():
     """
