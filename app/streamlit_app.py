@@ -67,18 +67,28 @@ import urllib.request
 MODEL_PATH = "models/best_resnet50_crack_detector.h5"
 os.makedirs("models", exist_ok=True)
 
-print("START CHECK →", os.path.exists(MODEL_PATH))
+def download_model(url, path):
+    try:
+        print("⬇ Attempting download...")
+        urllib.request.urlretrieve(url, path)
+        print("✅ Download success")
+    except Exception as e:
+        print("❌ Download failed:", e)
+
+URL = "https://huggingface.co/datasets/jai567/steelguard-model/resolve/main/best_resnet50_crack_detector.h5"
+
+print("Before:", os.path.exists(MODEL_PATH))
 
 if not os.path.exists(MODEL_PATH):
-    print("⬇ Downloading model from HuggingFace...")
+    download_model(URL, MODEL_PATH)
 
-    url = "https://huggingface.co/datasets/jai567/steelguard-model/resolve/main/best_resnet50_crack_detector.h5"
-    
-    urllib.request.urlretrieve(url, MODEL_PATH)
+print("After:", os.path.exists(MODEL_PATH))
 
-print("END CHECK →", os.path.exists(MODEL_PATH))
+# 🔥 HARD FAIL CHECK (IMPORTANT)
+if not os.path.exists(MODEL_PATH):
+    st.error("🚨 MODEL DOWNLOAD FAILED — check logs")
+    st.stop()
 
-# 🔥 CRITICAL LINE
 MODEL_SEARCH_PATHS = [MODEL_PATH]
 
 # ══════════════════════════════════════════════
