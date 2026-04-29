@@ -60,7 +60,7 @@ CLASS_DESC = {
 }
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))cMODEL_SEARCH_PATHS = [
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))MODEL_SEARCH_PATHS = [
     os.path.join(_SCRIPT_DIR, "best_model.keras"),
     os.path.join(_SCRIPT_DIR, "best_model.h5"),
     os.path.join(_SCRIPT_DIR, "models", "best_model.keras"),
