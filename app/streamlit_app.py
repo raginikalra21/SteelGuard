@@ -9,7 +9,31 @@ import os
 import sys
 from io import BytesIO
 import gdown
+import h5py
+import json
 
+def fix_h5_model(path):
+    try:
+        with h5py.File(path, "r+") as f:
+            if "model_config" in f.attrs:
+                config = json.loads(f.attrs["model_config"].decode("utf-8"))
+
+                # 🔥 recursively remove bad key
+                def clean(obj):
+                    if isinstance(obj, dict):
+                        obj.pop("quantization_config", None)
+                        for v in obj.values():
+                            clean(v)
+                    elif isinstance(obj, list):
+                        for v in obj:
+                            clean(v)
+
+                clean(config)
+
+                f.attrs["model_config"] = json.dumps(config).encode("utf-8")
+                print("✅ Fixed model config (removed quantization_config)")
+    except Exception as e:
+        print("❌ H5 patch failed:", e)
 # ══════════════════════════════════════════════
 #  PAGE CONFIG  (must be first Streamlit call)
 # ══════════════════════════════════════════════
@@ -82,6 +106,8 @@ print("Before:", os.path.exists(MODEL_PATH))
 if not os.path.exists(MODEL_PATH):
     download_model(URL, MODEL_PATH)
 
+# 🔥 ADD THIS LINE
+fix_h5_model(MODEL_PATH)
 print("After:", os.path.exists(MODEL_PATH))
 
 # 🔥 HARD FAIL CHECK (IMPORTANT)
