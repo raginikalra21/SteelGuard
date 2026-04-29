@@ -295,28 +295,52 @@ def normalize_probs(raw: np.ndarray) -> np.ndarray:
     return raw.astype(np.float32)
 
 # ══════════════════════════════════════════════
-#  MODEL LOADING
+# MODEL LOADING (PASTE BELOW CLASS_DISPLAY)
 # ══════════════════════════════════════════════
-@st.cache_resource
-def load_model_safe():
-    try:
-        from tensorflow.keras.models import load_model
-    except ImportError:
-        try:
-            from keras.models import load_model
-        except ImportError:
-            return None, None
-    for p in MODEL_SEARCH_PATHS:
-        if os.path.exists(p):
-            try:
-                return load_model(p), p
-            except Exception:
-                continue
-    return None, None
 
-model, model_path = load_model_safe()
-MODEL_LOADED = model is not None
-DEMO_MODE    = not MODEL_LOADED
+# Current file = app/streamlit_app.py
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Your real repo structure:
+# steelguard/
+# ├── app/streamlit_app.py
+# └── models/
+#     ├── best_resnet50_crack_detector.h5
+#     └── resnet50_crack_detector.h5
+
+MODEL_SEARCH_PATHS = [
+    # Main correct paths
+    os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "best_resnet50_crack_detector.h5")),
+    os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "resnet50_crack_detector.h5")),
+
+    # Fallback relative paths
+    "models/best_resnet50_crack_detector.h5",
+    "models/resnet50_crack_detector.h5",
+]
+
+model = None
+loaded_model_path = None
+DEMO_MODE = True
+
+for model_path in MODEL_SEARCH_PATHS:
+    try:
+        if os.path.exists(model_path):
+            model = tf.keras.models.load_model(model_path, compile=False)
+            loaded_model_path = model_path
+            DEMO_MODE = False
+            break
+    except Exception as e:
+        st.write(f"Failed loading {model_path}: {e}")
+
+if DEMO_MODE:
+    st.warning(
+        "⚠ DEMO MODE — No model file found.\n\n"
+        "Expected:\n"
+        "- models/best_resnet50_crack_detector.h5\n"
+        "- models/resnet50_crack_detector.h5"
+    )
+else:
+    st.success(f"✅ Model Loaded: {os.path.basename(loaded_model_path)}")
 
 # ══════════════════════════════════════════════
 #  GRAD-CAM  — universal, never returns None
