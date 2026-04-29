@@ -60,22 +60,16 @@ CLASS_DESC = {
 }
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
-# Current file directory = app folder
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Search model paths
 MODEL_SEARCH_PATHS = [
-    # models folder is outside app folder (same project level)
-    os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "best_model.h5")),
-    os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "best_model.keras")),
+    # parent models folder
+    os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "best_resnet50_crack_detector.h5")),
     os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "resnet50_crack_detector.h5")),
-    os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "models", "resnet50_crack_detector.keras")),
 
-    # fallback relative paths
-    "models/best_model.h5",
-    "models/best_model.keras",
+    # fallback if launched from repo root
+    "models/best_resnet50_crack_detector.h5",
     "models/resnet50_crack_detector.h5",
-    "models/resnet50_crack_detector.keras",
 ]
 # ══════════════════════════════════════════════
 #  SESSION STATE
