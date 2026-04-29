@@ -62,18 +62,8 @@ RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_SEARCH_PATHS = [
-    os.path.join(_SCRIPT_DIR, "best_model.keras"),
-    os.path.join(_SCRIPT_DIR, "best_model.h5"),
-    os.path.join(_SCRIPT_DIR, "models", "best_model.keras"),
-    os.path.join(_SCRIPT_DIR, "models", "best_model.h5"),
-    os.path.join(_SCRIPT_DIR, "models", "resnet50_crack_detector.h5"),
-    os.path.join(_SCRIPT_DIR, "models", "resnet50_crack_detector.keras"),
-    "models/best_model.keras",
-    "models/best_model.h5",
-    "models/resnet50_crack_detector.h5",
-    "models/resnet50_crack_detector.keras",
+    os.path.join(os.path.dirname(__file__), "../models/best_resnet50_crack_detector.h5"),
 ]
-
 # ══════════════════════════════════════════════
 #  SESSION STATE
 # ══════════════════════════════════════════════
