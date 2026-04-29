@@ -63,12 +63,10 @@ RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
 MODEL_PATH = "models/best_resnet50_crack_detector.h5"
 
-# create models folder
 os.makedirs("models", exist_ok=True)
 
-# download model if not present
 if not os.path.exists(MODEL_PATH):
-    st.write("⬇ Downloading AI model... (first run only, ~30 sec)")
+    print("Downloading model...")   # IMPORTANT: use print, not st.write
     gdown.download(
         "https://drive.google.com/uc?id=1fRMd9xz0bJM-KSc0TIbGDMr1agYSRFnR",
         MODEL_PATH,
