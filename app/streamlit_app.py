@@ -62,24 +62,23 @@ CLASS_DESC = {
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
 import os
-import gdown
-
 import urllib.request
 
 MODEL_PATH = "models/best_resnet50_crack_detector.h5"
 os.makedirs("models", exist_ok=True)
 
-print("Before download:", os.path.exists(MODEL_PATH))
+print("START CHECK →", os.path.exists(MODEL_PATH))
 
 if not os.path.exists(MODEL_PATH):
-    print("⬇ Downloading model (direct)...")
-    
-    url = "https://drive.google.com/uc?export=download&id=1fRMd9xz0bJM-KSc0TIbGDMr1agYSRFnR"
+    print("⬇ Downloading model from HuggingFace...")
+
+    url = "https://huggingface.co/datasets/jai567/steelguard-model/resolve/main/best_resnet50_crack_detector.h5"
     
     urllib.request.urlretrieve(url, MODEL_PATH)
 
-print("After download:", os.path.exists(MODEL_PATH))
+print("END CHECK →", os.path.exists(MODEL_PATH))
 
+# 🔥 CRITICAL LINE
 MODEL_SEARCH_PATHS = [MODEL_PATH]
 
 # ══════════════════════════════════════════════
