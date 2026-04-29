@@ -8,6 +8,7 @@ import base64
 import os
 import sys
 from io import BytesIO
+import gdown
 
 # ══════════════════════════════════════════════
 #  PAGE CONFIG  (must be first Streamlit call)
@@ -60,23 +61,19 @@ CLASS_DESC = {
 }
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
-# ── Model search paths (covers local dev + Streamlit Cloud) ──────────
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT   = os.path.abspath(os.path.join(_SCRIPT_DIR, ".."))
+MODEL_PATH = "models/best_resnet50_crack_detector.h5"
 
-MODEL_SEARCH_PATHS = [
-    # Streamlit Cloud standard mount path
-    "/mount/src/steelguard/models/best_resnet50_crack_detector.h5",
-    # Relative: repo_root/models/
-    os.path.join(_REPO_ROOT, "models", "best_resnet50_crack_detector.h5"),
-    # Same folder as script
-    os.path.join(_SCRIPT_DIR, "best_resnet50_crack_detector.h5"),
-    # One level up
-    os.path.join(_SCRIPT_DIR, "..", "models", "best_resnet50_crack_detector.h5"),
-    # Common alternate name
-    os.path.join(_REPO_ROOT, "models", "best_model.keras"),
-    os.path.join(_SCRIPT_DIR, "best_model.keras"),
-]
+# create models folder
+os.makedirs("models", exist_ok=True)
+
+# download model if not present
+if not os.path.exists(MODEL_PATH):
+    st.write("⬇ Downloading AI model... (first run only, ~30 sec)")
+    gdown.download(
+        "https://drive.google.com/uc?id=1fRMd9xz0bJM-KSc0TIbGDMr1agYSRFnR",
+        MODEL_PATH,
+        quiet=False
+    )
 
 # ══════════════════════════════════════════════
 #  SESSION STATE
