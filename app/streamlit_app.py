@@ -6,11 +6,11 @@ import time
 import datetime
 import base64
 import os
+import sys
 from io import BytesIO
-import tensorflow as tf
 
 # ══════════════════════════════════════════════
-#  PAGE CONFIG
+#  PAGE CONFIG  (must be first Streamlit call)
 # ══════════════════════════════════════════════
 st.set_page_config(
     page_title="SteelGuard AI · Tata Steel",
@@ -60,12 +60,24 @@ CLASS_DESC = {
 }
 RISK_SCORE = {"HIGH": 85, "MEDIUM": 50, "LOW": 20}
 
+# ── Model search paths (covers local dev + Streamlit Cloud) ──────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_REPO_ROOT   = os.path.abspath(os.path.join(_SCRIPT_DIR, ".."))
 
-MODEL_PATH = os.path.join(ROOT_DIR, "models", "best_resnet50_crack_detector.h5")
+MODEL_SEARCH_PATHS = [
+    # Streamlit Cloud standard mount path
+    "/mount/src/steelguard/models/best_resnet50_crack_detector.h5",
+    # Relative: repo_root/models/
+    os.path.join(_REPO_ROOT, "models", "best_resnet50_crack_detector.h5"),
+    # Same folder as script
+    os.path.join(_SCRIPT_DIR, "best_resnet50_crack_detector.h5"),
+    # One level up
+    os.path.join(_SCRIPT_DIR, "..", "models", "best_resnet50_crack_detector.h5"),
+    # Common alternate name
+    os.path.join(_REPO_ROOT, "models", "best_model.keras"),
+    os.path.join(_SCRIPT_DIR, "best_model.keras"),
+]
 
-MODEL_SEARCH_PATHS = [MODEL_PATH]
 # ══════════════════════════════════════════════
 #  SESSION STATE
 # ══════════════════════════════════════════════
@@ -164,7 +176,6 @@ section[data-testid="stSidebar"] .stSlider > div { padding:0; }
 .prob-row.active .prob-name{color:#edf0f7;font-weight:500;}
 .prob-row.active .prob-pct{color:#edf0f7;}
 
-/* ── FIXED legend bars — inline style only, no CSS class conflict ── */
 .map-footer{display:flex;align-items:center;gap:8px;margin-top:10px;
     font-size:.65rem;font-family:'IBM Plex Mono',monospace;color:#3a4260;}
 .map-footer span{flex-shrink:0;}
@@ -234,7 +245,6 @@ def risk_meter_html(risk: str, risk_color: str) -> str:
     )
 
 def legend_bar(label_left: str, label_right: str, gradient: str) -> str:
-    """Renders a working colour legend bar using only inline styles."""
     return (
         f'<div class="map-footer">'
         f'<span>{label_left}</span>'
@@ -262,6 +272,7 @@ def prob_bar_html(probs: np.ndarray, pred_idx: int, threshold: float) -> str:
     return "".join(rows)
 
 def demo_predict(img_np: np.ndarray) -> np.ndarray:
+    """Texture-based heuristic prediction used in demo mode."""
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     var  = cv2.Laplacian(gray, cv2.CV_64F).var()
     mean = float(gray.mean())
@@ -275,139 +286,138 @@ def demo_predict(img_np: np.ndarray) -> np.ndarray:
     return (raw / raw.sum()).astype(np.float32)
 
 def normalize_probs(raw: np.ndarray) -> np.ndarray:
+    """Normalize model output to 6-class probability vector."""
+    if raw.ndim == 0:
+        raw = np.array([float(raw)])
+    raw = raw.flatten()
     if raw.shape[0] == 1:
         p = float(raw[0])
         out = np.zeros(6, dtype=np.float32)
-        if p > 0.5: out[5], out[2] = p, 1-p
-        else:       out[2], out[5] = 1-p, p
+        if p > 0.5: out[5], out[2] = p, 1 - p
+        else:       out[2], out[5] = 1 - p, p
         return out
     if raw.shape[0] == 2:
         p = float(raw[1])
         out = np.zeros(6, dtype=np.float32)
-        if p > 0.5: out[5], out[2] = p, 1-p
-        else:       out[2], out[5] = 1-p, p
+        if p > 0.5: out[5], out[2] = p, 1 - p
+        else:       out[2], out[5] = 1 - p, p
         return out
-    return raw.astype(np.float32)
+    if raw.shape[0] == 6:
+        return raw.astype(np.float32)
+    # Unknown shape — return uniform
+    return np.ones(6, dtype=np.float32) / 6
 
 # ══════════════════════════════════════════════
-#  MODEL LOADING
+#  MODEL LOADING  — completely safe, never raises
 # ══════════════════════════════════════════════
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_model_safe():
+    """
+    Try to load the Keras model from any known path.
+    Returns (model_object, path_string) or (None, None).
+    Never raises — all exceptions are caught.
+    """
+    # Attempt TF / Keras imports
+    load_fn = None
     try:
-        from tensorflow.keras.models import load_model
+        from tensorflow.keras.models import load_model as _lm
+        load_fn = _lm
     except ImportError:
-        try:
-            from keras.models import load_model
-        except ImportError:
-            return None, None
-    for p in MODEL_SEARCH_PATHS:
-        if os.path.exists(p):
-            try:
-                return load_model(p), p
-            except Exception:
-                continue
-    return None, None
-
-model, model_path = load_model_safe()
-MODEL_LOADED = model is not None
-DEMO_MODE    = not MODEL_LOADED
-
-# ══════════════════════════════════════════════
-#  GRAD-CAM  — universal, never returns None
-# ══════════════════════════════════════════════
-def find_last_conv_layer(m) -> tf.keras.layers.Layer | None:
-    """
-    Walk the model (and any nested sub-models) backwards.
-    Return the last Conv2D or DepthwiseConv2D encountered.
-    """
-    # Flatten all layers including nested ones
-    def all_layers(model):
-        for layer in model.layers:
-            if hasattr(layer, 'layers'):   # nested Model / Sequential
-                yield from all_layers(layer)
-            else:
-                yield layer
-
-    conv_types = (
-        tf.keras.layers.Conv2D,
-        tf.keras.layers.DepthwiseConv2D,
-        tf.keras.layers.SeparableConv2D,
-    )
-    last = None
-    for layer in all_layers(m):
-        if isinstance(layer, conv_types):
-            last = layer
-    return last
-
-def find_conv_output_tensor(m, target_layer):
-    """
-    Given a model and a target layer, build a sub-model that outputs
-    that layer's activations alongside the final predictions.
-    We do this by re-tracing the functional graph.
-    """
-    # Try direct approach first (works for most Functional models)
-    try:
-        grad_m = tf.keras.models.Model(
-            inputs=m.inputs,
-            outputs=[target_layer.output, m.output]
-        )
-        return grad_m
-    except Exception:
         pass
 
-    # Nested model: target_layer lives inside a sub-model
-    for layer in m.layers:
-        if hasattr(layer, 'layers'):
-            try:
-                inner = tf.keras.models.Model(
-                    inputs=layer.input,
-                    outputs=[target_layer.output, layer.output]
-                )
-                # Wrap outer model
-                inner_out, inner_pred = inner(m.input)
-                # pass inner_pred through remaining layers
-                x = inner_pred
-                reached = False
-                for outer_layer in m.layers:
-                    if outer_layer is layer:
-                        reached = True
-                        continue
-                    if reached:
-                        x = outer_layer(x)
-                grad_m = tf.keras.models.Model(
-                    inputs=m.input,
-                    outputs=[inner_out, x]
-                )
-                return grad_m
-            except Exception:
-                continue
-    return None
+    if load_fn is None:
+        try:
+            from keras.models import load_model as _lm
+            load_fn = _lm
+        except ImportError:
+            print("[SteelGuard] Neither tensorflow.keras nor keras found.", file=sys.stderr)
+            return None, None
 
-@st.cache_resource
+    for p in MODEL_SEARCH_PATHS:
+        if os.path.exists(p):
+            print(f"[SteelGuard] Trying model at: {p}", file=sys.stderr)
+            try:
+                mdl = load_fn(p)
+                print(f"[SteelGuard] Model loaded successfully from: {p}", file=sys.stderr)
+                return mdl, p
+            except Exception as e:
+                print(f"[SteelGuard] Failed to load {p}: {e}", file=sys.stderr)
+                continue
+
+    print("[SteelGuard] No model file found. Running in DEMO mode.", file=sys.stderr)
+    print(f"[SteelGuard] Searched: {MODEL_SEARCH_PATHS}", file=sys.stderr)
+    return None, None
+
+
+# ── Load model (safe) ───────────────────────
+try:
+    model, model_path = load_model_safe()
+except Exception as _e:
+    print(f"[SteelGuard] Unexpected error in load_model_safe: {_e}", file=sys.stderr)
+    model, model_path = None, None
+
+# These are ALWAYS defined regardless of model load outcome
+MODEL_LOADED: bool = model is not None
+DEMO_MODE:    bool = not MODEL_LOADED
+
+# ══════════════════════════════════════════════
+#  GRAD-CAM  — safe, always returns a heatmap
+# ══════════════════════════════════════════════
+@st.cache_resource(show_spinner=False)
 def build_grad_model(_model):
+    """Build a Grad-CAM sub-model. Returns None on any failure."""
     if _model is None:
         return None
     try:
-        target = find_last_conv_layer(_model)
-        if target is None:
+        import tensorflow as tf
+
+        conv_types = (
+            tf.keras.layers.Conv2D,
+            tf.keras.layers.DepthwiseConv2D,
+            tf.keras.layers.SeparableConv2D,
+        )
+
+        def all_layers(m):
+            for layer in m.layers:
+                if hasattr(layer, "layers"):
+                    yield from all_layers(layer)
+                else:
+                    yield layer
+
+        last_conv = None
+        for layer in all_layers(_model):
+            if isinstance(layer, conv_types):
+                last_conv = layer
+
+        if last_conv is None:
             return None
-        gm = find_conv_output_tensor(_model, target)
-        return gm
-    except Exception:
+
+        grad_m = tf.keras.models.Model(
+            inputs=_model.inputs,
+            outputs=[last_conv.output, _model.output],
+        )
+        return grad_m
+    except Exception as e:
+        print(f"[SteelGuard] build_grad_model failed: {e}", file=sys.stderr)
         return None
 
-grad_model = build_grad_model(model)
 
-def get_gradcam(img_array: np.ndarray, pred_idx: int) -> np.ndarray | None:
-    """
-    Real Grad-CAM when grad_model is available,
-    else texture-based pseudo-heatmap (always returns something).
-    """
-    img_tensor = tf.cast(img_array, tf.float32)
+try:
+    grad_model = build_grad_model(model)
+except Exception as _e:
+    print(f"[SteelGuard] grad_model build error: {_e}", file=sys.stderr)
+    grad_model = None
 
+
+def get_gradcam(img_array: np.ndarray, pred_idx: int) -> np.ndarray:
+    """
+    Returns a float32 heatmap [0,1].  Always succeeds.
+    Uses real Grad-CAM when grad_model is available, else texture pseudo-heatmap.
+    """
     if grad_model is not None:
         try:
+            import tensorflow as tf
+            img_tensor = tf.cast(img_array, tf.float32)
             with tf.GradientTape() as tape:
                 conv_out, preds = grad_model(img_tensor)
                 tape.watch(conv_out)
@@ -418,27 +428,25 @@ def get_gradcam(img_array: np.ndarray, pred_idx: int) -> np.ndarray | None:
             heatmap = np.maximum(heatmap, 0)
             heatmap /= (heatmap.max() + 1e-8)
             return heatmap.astype(np.float32)
-        except Exception:
-            pass  # fall through to pseudo-heatmap
+        except Exception as e:
+            print(f"[SteelGuard] Grad-CAM failed: {e}", file=sys.stderr)
 
-    # ── Pseudo Grad-CAM (always works, no model needed) ──────────────
-    # Uses Laplacian + Gaussian to highlight high-frequency defect regions
-    orig = img_array[0]                         # (224,224,3) float32
+    # Pseudo Grad-CAM — texture-based, always works
+    orig = img_array[0]
     gray = cv2.cvtColor((orig * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
-    lap  = cv2.Laplacian(gray, cv2.CV_32F, ksize=3)
-    lap  = np.abs(lap)
-    # Smooth to get blob-like activation regions
+    lap  = np.abs(cv2.Laplacian(gray, cv2.CV_32F, ksize=3))
     lap  = cv2.GaussianBlur(lap, (15, 15), 0)
-    lap  = cv2.GaussianBlur(lap, (15, 15), 0)   # double blur for smoothness
+    lap  = cv2.GaussianBlur(lap, (15, 15), 0)
     lap /= (lap.max() + 1e-8)
     return lap.astype(np.float32)
 
-def apply_gradcam_overlay(img_np: np.ndarray, heatmap: np.ndarray, alpha: float = 0.45):
-    h, w   = img_np.shape[:2]
-    hm     = cv2.resize(heatmap, (w, h))
-    hm_u   = np.uint8(255 * hm)
+
+def apply_gradcam_overlay(img_np: np.ndarray, heatmap: np.ndarray, alpha: float = 0.45) -> np.ndarray:
+    h, w    = img_np.shape[:2]
+    hm      = cv2.resize(heatmap, (w, h))
+    hm_u    = np.uint8(255 * hm)
     colored = cv2.applyColorMap(hm_u, cv2.COLORMAP_JET)
-    bgr    = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    bgr     = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     overlay = cv2.addWeighted(bgr, 1 - alpha, colored, alpha, 0)
     return cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
 
@@ -457,17 +465,17 @@ gradcam_alpha        = st.sidebar.slider("Grad-CAM Overlay Strength", 0.1, 0.9, 
 
 st.sidebar.markdown("<hr style='border-color:#161c28;margin:14px 0'>", unsafe_allow_html=True)
 
-show_conf    = st.sidebar.checkbox("Show Confidence Gauge",    True)
-show_gradcam = st.sidebar.checkbox("Show Grad-CAM Heatmap",    True)
-show_heatmap = st.sidebar.checkbox("Show CV Focus Maps",        True)
-show_probs   = st.sidebar.checkbox("Show Probability Bars",     True)
-show_hist    = st.sidebar.checkbox("Show Inspection History",   True)
+show_conf    = st.sidebar.checkbox("Show Confidence Gauge",  True)
+show_gradcam = st.sidebar.checkbox("Show Grad-CAM Heatmap",  True)
+show_heatmap = st.sidebar.checkbox("Show CV Focus Maps",      True)
+show_probs   = st.sidebar.checkbox("Show Probability Bars",   True)
+show_hist    = st.sidebar.checkbox("Show Inspection History", True)
 
 st.sidebar.markdown("<hr style='border-color:#161c28;margin:14px 0'>", unsafe_allow_html=True)
 
 model_path_lbl = os.path.basename(model_path) if model_path else "not found"
-model_status   = "✓ Loaded"      if MODEL_LOADED else "✗ Not found"
-gradcam_status = "✓ Real Grad-CAM" if grad_model is not None else "~ Pseudo (texture)"
+model_status   = "✓ Loaded"         if MODEL_LOADED      else "✗ Not found"
+gradcam_status = "✓ Real Grad-CAM"  if grad_model is not None else "~ Pseudo (texture)"
 
 st.sidebar.markdown(
     f'<div style="font-size:.62rem;color:#28304a;font-family:\'IBM Plex Mono\',monospace;line-height:2.1">'
@@ -542,8 +550,10 @@ if DEMO_MODE:
     st.markdown(
         '<div class="demo-notice">'
         '<strong>⚠ DEMO MODE — No model file found</strong>'
-        '<p>Place <code>best_model.keras</code> or <code>models/resnet50_crack_detector.h5</code> '
-        'next to this script. Predictions use image-texture heuristics.</p>'
+        '<p>Place your model at <code>models/best_resnet50_crack_detector.h5</code> '
+        'in the repo root (or <code>models/best_model.keras</code>). '
+        'Predictions currently use image-texture heuristics. '
+        'Check the deployment logs for the exact searched paths.</p>'
         '</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
@@ -568,10 +578,14 @@ if uploaded_file is not None:
 
     with st.spinner("Running inference…"):
         time.sleep(0.3)
-        if MODEL_LOADED:
-            raw   = model.predict(img_input, verbose=0)[0]
-            probs = normalize_probs(raw)
-        else:
+        try:
+            if MODEL_LOADED and model is not None:
+                raw   = model.predict(img_input, verbose=0)[0]
+                probs = normalize_probs(raw)
+            else:
+                probs = demo_predict(img_np)
+        except Exception as _inf_err:
+            print(f"[SteelGuard] Inference error: {_inf_err}", file=sys.stderr)
             probs = demo_predict(img_np)
 
         pred_idx   = int(np.argmax(probs))
@@ -583,7 +597,6 @@ if uploaded_file is not None:
         risk_str, risk_color, risk_bg, risk_border = RISK_MAP[pred_label]
         chip_color = CLASS_COLORS[pred_label]
 
-        # Grad-CAM (always returns a heatmap now)
         heatmap = get_gradcam(img_input, pred_idx) if show_gradcam else None
 
     st.session_state.history.append({
@@ -593,7 +606,7 @@ if uploaded_file is not None:
         "time":  datetime.datetime.now().strftime("%H:%M:%S"),
     })
 
-    # ── ROW 1: Image | Result ─────────────────
+    # ── ROW 1: Image | Result ──────────────────
     col_img, col_res = st.columns([1.15, 0.85], gap="large")
 
     with col_img:
@@ -674,51 +687,41 @@ if uploaded_file is not None:
 
         cols = st.columns(len(panels), gap="medium")
 
-        GRAD_TAG = "Grad-CAM (XAI)" if grad_model is not None else "Pseudo Grad-CAM (texture)"
-
-        # Gradient strings for legend bars (inline, always visible)
+        GRAD_TAG  = "Grad-CAM (XAI)" if grad_model is not None else "Pseudo Grad-CAM (texture)"
         G_GREY    = "linear-gradient(90deg,#000000,#ffffff)"
         G_INFERNO = "linear-gradient(90deg,#000004,#420a68,#932667,#dd513a,#fca50a,#f0f921)"
         G_JET     = "linear-gradient(90deg,#000080,#00ffff,#ffff00,#ff0000)"
 
         for col_widget, panel in zip(cols, panels):
             with col_widget:
-                if panel == "gradcam":
+                if panel == "gradcam" and heatmap is not None:
                     st.markdown(
                         f'<div class="panel"><div class="panel-title">{GRAD_TAG}</div>',
                         unsafe_allow_html=True)
                     overlay = apply_gradcam_overlay(img_np, heatmap, gradcam_alpha)
                     st.image(overlay, use_container_width=True)
-                    st.markdown(
-                        legend_bar("Cold", "Hot", G_JET) + "</div>",
-                        unsafe_allow_html=True)
+                    st.markdown(legend_bar("Cold", "Hot", G_JET) + "</div>", unsafe_allow_html=True)
 
                 elif panel == "clahe":
                     st.markdown(
                         '<div class="panel"><div class="panel-title">CLAHE Enhanced</div>',
                         unsafe_allow_html=True)
                     st.image(enhanced, use_container_width=True, clamp=True)
-                    st.markdown(
-                        legend_bar("Dark", "Bright", G_GREY) + "</div>",
-                        unsafe_allow_html=True)
+                    st.markdown(legend_bar("Dark", "Bright", G_GREY) + "</div>", unsafe_allow_html=True)
 
                 elif panel == "inferno":
                     st.markdown(
                         '<div class="panel"><div class="panel-title">Canny + Inferno</div>',
                         unsafe_allow_html=True)
                     st.image(cv2.cvtColor(ov_inf, cv2.COLOR_BGR2RGB), use_container_width=True)
-                    st.markdown(
-                        legend_bar("Low", "High", G_INFERNO) + "</div>",
-                        unsafe_allow_html=True)
+                    st.markdown(legend_bar("Low", "High", G_INFERNO) + "</div>", unsafe_allow_html=True)
 
                 elif panel == "jet":
                     st.markdown(
                         '<div class="panel"><div class="panel-title">Laplacian + Jet</div>',
                         unsafe_allow_html=True)
                     st.image(cv2.cvtColor(ov_jet, cv2.COLOR_BGR2RGB), use_container_width=True)
-                    st.markdown(
-                        legend_bar("Low", "High", G_JET) + "</div>",
-                        unsafe_allow_html=True)
+                    st.markdown(legend_bar("Low", "High", G_JET) + "</div>", unsafe_allow_html=True)
 
     # ── ROW 3: Probability bars ────────────────
     if show_probs:
