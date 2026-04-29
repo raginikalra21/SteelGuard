@@ -349,25 +349,7 @@ def normalize_probs(raw: np.ndarray) -> np.ndarray:
 # ══════════════════════════════════════════════
 #  MODEL LOADING  — completely safe, never raises
 # ══════════════════════════════════════════════
-import tensorflow as tf
 
-# 🔥 Patch TensorFlow deserialization (works in older TF)
-from tensorflow.python.keras.saving import saving_utils
-
-_original = saving_utils.model_from_config
-
-def patched_model_from_config(config, custom_objects=None):
-    try:
-        # remove problematic key globally
-        if isinstance(config, dict):
-            for layer in config.get("layers", []):
-                if "config" in layer:
-                    layer["config"].pop("quantization_config", None)
-    except:
-        pass
-    return _original(config, custom_objects=custom_objects)
-
-saving_utils.model_from_config = patched_model_from_config
 @st.cache_resource(show_spinner=False)
 def load_model_safe():
     """
